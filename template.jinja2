@@ -1,0 +1,17 @@
+Classify the text of the following news article as either "Satisfactory" or "Non-Satisfactory" based on the classification question.
+The output should be either "Satisfactory" or "Not-Satisfactory".
+The question for the classification is : {{ question }}
+{% if examples %}
+{% for item in examples %}
+"""
+Example {{ loop.index0 + 1 }}:
+input: {{ item.context }}
+output: {{ item.label }}
+"""
+{% endfor %}
+{% endif %}
+Now, classify the sentiment of this review:
+"""
+input: {{ test }}
+output:
+"""
