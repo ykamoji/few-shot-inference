@@ -23,52 +23,63 @@ with open('Questions.csv', newline='') as csvfile:
 
 wb = xl.load_workbook("health_articles_data.xlsx")
 
-for index in list(range(1)):
-    # print("Active sheet: ", wb.active)
-    wb._active_sheet_index = index
-    sheet = wb.active
+dataset = []
 
-    dataDict = {}
-    for row in tqdm(range(990, 1000)):
-        data = list(sheet.iter_cols(1, sheet.max_column))
-        example = data[21][row].value
-        answer = data[18][row].value
-        split = data[-1][row].value
-        dataDict[row] = {"example": example, "question": questions[index], "answer": answer, "split": split}
 
-        # print(f"Q:{questions[index]}\nEx:{example}\nAns:{answer}\nSplit:{split}\n\n")
+def preprocess():
 
-    test_list = [index for index, data in dataDict.items() if data['split'] == 'test']
-    train_list = [index for index, data in dataDict.items() if data['split'] == 'train']
+    for index in list(range(1)):
+        # print("Active sheet: ", wb.active)
+        wb._active_sheet_index = index
+        sheet = wb.active
 
-    for test_index in test_list[:1]:
+        dataDict = {}
+        for row in tqdm(range(0, sheet.max_row)):
+            data = list(sheet.iter_cols(1, sheet.max_column))
+            example = data[21][row].value
+            answer = data[18][row].value
+            split = data[-1][row].value
+            dataDict[row] = {"example": example, "question": questions[index], "answer": answer, "split": split}
 
-        train_index_1, train_index_2 = random.sample(train_list, 2) # train_list[:2]
+            # print(f"Q:{questions[index]}\nEx:{example}\nAns:{answer}\nSplit:{split}\n\n")
 
-        train_list.remove(train_index_1)
-        train_list.remove(train_index_2)
+        test_list = [index for index, data in dataDict.items() if data['split'] == 'test']
+        train_list = [index for index, data in dataDict.items() if data['split'] == 'train']
 
-        train_data_1, train_data_2 = dataDict[train_index_1], dataDict[train_index_2]
+        for test_index in test_list[:1]:
 
-        test_data = dataDict[test_index]
+            train_index_1, train_index_2 = random.sample(train_list, 2) # train_list[:2]
 
-        # print(f"{train_data_1}")
-        # print(f"{train_data_2}")
-        # print(f"{test_data}")
+            train_list.remove(train_index_1)
+            train_list.remove(train_index_2)
 
-        examples = [
-            {"context": train_data_1["example"], "label": train_data_1["answer"]}, # if == "" then 1 or 0
-            {"context": train_data_2["example"], "label": train_data_2["answer"]},
-        ]
+            train_data_1, train_data_2 = dataDict[train_index_1], dataDict[train_index_2]
 
-        test = test_data["example"]
+            test_data = dataDict[test_index]
 
-        prompt = prompt_template.render(
-            labels=labels,
-            examples=examples,
-            test=test,
-            question=questions[index]
-        )
+            # print(f"{train_data_1}")
+            # print(f"{train_data_2}")
+            # print(f"{test_data}")
 
-        print(prompt)
+            examples = [
+                {"context": train_data_1["example"], "label": train_data_1["answer"]}, # if == "" then 1 or 0
+                {"context": train_data_2["example"], "label": train_data_2["answer"]},
+            ]
+
+            test = test_data["example"]
+
+            prompt = prompt_template.render(
+                labels=labels,
+                examples=examples,
+                test=test,
+                question=questions[index]
+            )
+
+            dataset.append({"prompt": prompt, "target": test_data["answer"]})
+
+    return dataset
+
+
+if __name__ == '__main__':
+    print(preprocess()[0]["prompt"])
 
