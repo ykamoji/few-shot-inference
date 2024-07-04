@@ -23,13 +23,15 @@ with open('Questions.csv', newline='') as csvfile:
 
 wb = xl.load_workbook("health_articles_data.xlsx")
 
-dataset = []
-
+dataset = {}
 
 def preprocess():
-
-    for index in list(range(1)):
+    
+    for index in list(range(4)):
         # print("Active sheet: ", wb.active)
+
+        dataset[index] = []
+
         wb._active_sheet_index = index
         sheet = wb.active
 
@@ -46,7 +48,7 @@ def preprocess():
         test_list = [index for index, data in dataDict.items() if data['split'] == 'test']
         train_list = [index for index, data in dataDict.items() if data['split'] == 'train']
 
-        for test_index in test_list[:1]:
+        for test_index in test_list:
 
             train_index_1, train_index_2 = random.sample(train_list, 2) # train_list[:2]
 
@@ -62,8 +64,8 @@ def preprocess():
             # print(f"{test_data}")
 
             examples = [
-                {"context": train_data_1["example"], "label": train_data_1["answer"]}, # if == "" then 1 or 0
-                {"context": train_data_2["example"], "label": train_data_2["answer"]},
+                {"context": train_data_1["example"], "label": 1 if train_data_1["answer"] == "Satisfactory" else 0},
+                {"context": train_data_2["example"], "label": 1 if train_data_2["answer"] == "Satisfactory" else 0},
             ]
 
             test = test_data["example"]
@@ -75,7 +77,7 @@ def preprocess():
                 question=questions[index]
             )
 
-            dataset.append({"prompt": prompt, "target": test_data["answer"]})
+            dataset[index].append({"prompt": prompt, "target": test_data["answer"]})
 
     return dataset
 
