@@ -3,7 +3,7 @@ import numpy as np
 import os
 from dotenv import load_dotenv
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from preprocess import preprocess
+from preprocess import preprocess_inference
 
 load_dotenv('.env')
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -17,7 +17,7 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir='model/')
 model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir='model/') #quantization_config=quantization_config
 
-dataset = preprocess()
+dataset = preprocess_inference()
 
 input_tokens = tokenizer(dataset[0]["prompt"], return_tensors="pt")
 
