@@ -5,6 +5,9 @@ import pathlib
 import random
 from tqdm import tqdm
 
+with pathlib.Path("template.jinja2").open() as f:
+    prompt_template = jinja2.Template(f.read())
+
 labels = [
     {"label": 0, "answer": "Not Satisfactory"},
     {"label": 1, "answer": "Satisfactory"},
@@ -20,16 +23,15 @@ with open('Questions.csv', newline='') as csvfile:
 
 wb = xl.load_workbook("health_articles_data.xlsx")
 
-dataset = []
+dataset = {}
 
-
-def preprocess_inference():
-
-    with pathlib.Path("template.jinja2").open() as f:
-        prompt_template = jinja2.Template(f.read())
-
-    for index in list(range(1)):
+def preprocess():
+    
+    for index in list(range(4)):
         # print("Active sheet: ", wb.active)
+
+        dataset[index] = []
+
         wb._active_sheet_index = index
         sheet = wb.active
 
@@ -46,7 +48,7 @@ def preprocess_inference():
         test_list = [index for index, data in dataDict.items() if data['split'] == 'test']
         train_list = [index for index, data in dataDict.items() if data['split'] == 'train']
 
-        for test_index in test_list[:1]:
+        for test_index in test_list:
 
             train_index_1, train_index_2 = random.sample(train_list, 2) # train_list[:2]
 
@@ -62,8 +64,8 @@ def preprocess_inference():
             # print(f"{test_data}")
 
             examples = [
-                {"context": train_data_1["example"], "label": train_data_1["answer"]}, # if == "" then 1 or 0
-                {"context": train_data_2["example"], "label": train_data_2["answer"]},
+                {"context": train_data_1["example"], "label": 1 if train_data_1["answer"] == "Satisfactory" else 0},
+                {"context": train_data_2["example"], "label": 1 if train_data_2["answer"] == "Satisfactory" else 0},
             ]
 
             test = test_data["example"]
@@ -75,45 +77,11 @@ def preprocess_inference():
                 question=questions[index]
             )
 
-            dataset.append({"prompt": prompt, "target": test_data["answer"]})
+            dataset[index].append({"prompt": prompt, "target": test_data["answer"]})
 
     return dataset
 
-def preprocess_testing():
-    pass
-
-
-def preprocess_training():
-
-    with pathlib.Path("template_training.jinja2").open() as f:
-        prompt_template = jinja2.Template(f.read())
-
-    for index in list(range(1)):
-        # print("Active sheet: ", wb.active)
-        wb._active_sheet_index = index
-        sheet = wb.active
-
-        train_list, test_list = [], []
-        for row in tqdm(range(0, sheet.max_row)):
-            data = list(sheet.iter_cols(1, sheet.max_column))
-            context = data[21][row].value
-                answer = data[18][row].value
-            split = data[-1][row].value
-
-            prompt = prompt_template.render(
-                context=context,
-                question=questions[index]
-            )
-
-            if split == 'train':
-                train_list.append([{"input": , "output":}])
-            else:
-                test_list.append([{}])
-
-
-
-
 
 if __name__ == '__main__':
-    print(preprocess_inference()[0]["prompt"])
+    print(preprocess()[0]["prompt"])
 
