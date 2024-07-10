@@ -5,9 +5,6 @@ import pathlib
 import random
 from tqdm import tqdm
 
-with pathlib.Path("template.jinja2").open() as f:
-    prompt_template = jinja2.Template(f.read())
-
 labels = [
     {"label": 0, "answer": "Not Satisfactory"},
     {"label": 1, "answer": "Satisfactory"},
@@ -26,6 +23,9 @@ wb = xl.load_workbook("health_articles_data.xlsx")
 dataset = {}
 
 def preprocess():
+
+    with pathlib.Path("template.jinja2").open() as f:
+        prompt_template = jinja2.Template(f.read())
     
     for index in list(range(4)):
         # print("Active sheet: ", wb.active)
@@ -81,6 +81,39 @@ def preprocess():
 
     return dataset
 
+
+def preprocess_training():
+
+    with pathlib.Path("template_training.jinja2").open() as f:
+        prompt_template = jinja2.Template(f.read())
+
+    train_list, test_list = [], []
+
+    for index in list(range(1)):
+        # print("Active sheet: ", wb.active)
+        wb._active_sheet_index = index
+        sheet = wb.active
+
+        for row in tqdm(range(0, sheet.max_row)):
+            data = list(sheet.iter_cols(1, sheet.max_column))
+            context = data[21][row].value
+            answer = data[18][row].value
+            split = data[-1][row].value
+
+            prompt = prompt_template.render(
+                context=context,
+                question=questions[index],
+                label=1 if answer == "Satisfactory" else 0
+            )
+
+            data = {"input": prompt}
+
+            if split == 'train':
+                train_list.append(data)
+            else:
+                test_list.append(data)
+
+    return train_list, test_list
 
 if __name__ == '__main__':
     print(preprocess()[0]["prompt"])
