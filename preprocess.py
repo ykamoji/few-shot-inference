@@ -124,7 +124,11 @@ def preprocess_training():
         train_list.extend(local_train_list)
         test_list.extend(local_test_list)
 
+    random.shuffle(train_list)
+    random.shuffle(test_list)
+
     print(f"Total {len(train_list)} training dataset and " f"{len(test_list)} testing dataset")
+
     return train_list, test_list
 
 if __name__ == '__main__':
