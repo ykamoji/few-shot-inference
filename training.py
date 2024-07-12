@@ -4,14 +4,16 @@ import numpy as np
 import os
 import evaluate
 from dotenv import load_dotenv
-from transformers import AutoTokenizer, AutoModelForCausalLM, DataCollatorForLanguageModeling
-from peft import LoraConfig, get_peft_model
+from transformers import AutoTokenizer, BitsAndBytesConfig, AutoModelForCausalLM, DataCollatorForLanguageModeling
+from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
 from preprocess import preprocess_training
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from transformers.training_args import OptimizerNames
+from datasets import DatasetDict, Dataset
 
 load_dotenv('.env')
 HF_TOKEN = os.getenv("HF_TOKEN")
+
 
 def get_fine_tuning_trainer_args(output_path):
 
@@ -27,10 +29,9 @@ def get_fine_tuning_trainer_args(output_path):
         logging_steps=10,
         learning_rate=1e-5,
         warmup_ratio=0.1,
-        # weight_decay=,
         save_total_limit=2,
-        # metric_for_best_model='accuracy',
-        # greater_is_better=True,
+        metric_for_best_model='accuracy',
+        greater_is_better=True,
         optim=OptimizerNames.ADAMW_HF,
         remove_unused_columns=False,
         push_to_hub=False,
@@ -38,6 +39,12 @@ def get_fine_tuning_trainer_args(output_path):
         seed=42,
         gradient_accumulation_steps=1,
     )
+
+
+def compute_metrics(evaluations):
+    predictions, labels = evaluations
+    predictions = np.argmax(predictions, axis=1)
+    return {'accuracy': sum([1 for i, j in zip(predictions, labels) if i == j])/len(labels)}
 
 
 def print_trainable_parameters(model):
@@ -59,10 +66,27 @@ def fine_tuning():
 
     train_dataset, test_dataset = preprocess_training()
 
+    dataset_train = Dataset.from_list(train_dataset)
+    dataset_test = Dataset.from_list(test_dataset)
+
+    dataset = DatasetDict({
+        'train': dataset_train,
+        'eval': dataset_test,
+    })
+
     fine_tune_args = get_fine_tuning_trainer_args("results/")
 
-    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir='model/')
-    model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir='model/')
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type='nf4',
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=torch.bfloat16
+    )
+
+    model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2",
+                                                 quantization_config=quantization_config,
+                                                 num_labels=2,
+                                                 cache_dir='model/')
 
     for param in model.parameters():
         param.requires_grad = False  # freeze the model - train adapters later
@@ -78,27 +102,46 @@ def fine_tuning():
 
     model.lm_head = CastOutputToFloat(model.lm_head)
 
-    config = LoraConfig(
+    lora_config = LoraConfig(
         r=16,  # attention heads
         lora_alpha=32,  # alpha scaling
-        # target_modules=["q_proj", "v_proj"], #if you know the
+        target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj'],
         lora_dropout=0.05,
         bias="none",
-        task_type="Seq2Seq"  # set this for CLM or Seq2Seq
+        task_type="SEQ_CLS"  # set this for CLM or Seq2Seq
     )
 
-    model = get_peft_model(model, config)
+    model = prepare_model_for_kbit_training(model)
+    model = get_peft_model(model, lora_config)
+    model.add_adapter(peft_config=lora_config, adapter_name="adapter_1")
+    model.set_adapter("adapter_1")
+
+    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir='model/')
+
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.pad_token = tokenizer.eos_token
+
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.use_cache = False
+    model.config.pretraining_tp = 1
 
     print_trainable_parameters(model)
 
-    train_dataset = train_dataset.map(lambda samples: tokenizer(samples['input']), batched=True)
+    def data_preprocesing(row):
+        return tokenizer(row['input'], truncation=True, max_length=5000)
+
+    tokenized_data = dataset.map(data_preprocesing, batched=True,
+                                 remove_columns=['input'])
+    tokenized_data.set_format("torch")
+
 
     fine_tune_trainer=Trainer(
         model=model,
         args=fine_tune_args,
-        data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
-        train_dataset=train_dataset,
-        # eval_dataset=test_dataset,
+        data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
+        train_dataset=tokenized_data['train'],
+        eval_dataset=tokenized_data['eval'],
+        compute_metrics=compute_metrics
     )
 
     train_results = fine_tune_trainer.train()

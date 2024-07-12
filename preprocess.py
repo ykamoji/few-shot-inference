@@ -94,7 +94,7 @@ def preprocess_training():
         wb._active_sheet_index = index
         sheet = wb.active
 
-        for row in tqdm(range(0, sheet.max_row)):
+        for row in tqdm(range(0, 10)):
             data = list(sheet.iter_cols(1, sheet.max_column))
             context = data[21][row].value
             answer = data[18][row].value
@@ -106,7 +106,7 @@ def preprocess_training():
                 label=1 if answer == "Satisfactory" else 0
             )
 
-            data = {"input": prompt}
+            data = {"input": prompt, "label": 1 if answer == "Satisfactory" else 0}
 
             if split == 'train':
                 train_list.append(data)
