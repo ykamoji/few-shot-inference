@@ -89,12 +89,13 @@ def preprocess_training():
 
     train_list, test_list = [], []
 
-    for index in list(range(1)):
+    for index in list(range(9)):
         # print("Active sheet: ", wb.active)
         wb._active_sheet_index = index
         sheet = wb.active
 
-        for row in tqdm(range(0, 10)):
+        local_train_list, local_test_list = [], []
+        for row in tqdm(range(0, sheet.max_row)):
             data = list(sheet.iter_cols(1, sheet.max_column))
             context = data[21][row].value
             answer = data[18][row].value
@@ -102,17 +103,28 @@ def preprocess_training():
 
             prompt = prompt_template.render(
                 context=context,
-                question=questions[index],
-                label=1 if answer == "Satisfactory" else 0
+                question=questions[index]
+                # label=1 if answer == "Satisfactory" else 0
             )
 
             data = {"input": prompt, "label": 1 if answer == "Satisfactory" else 0}
 
             if split == 'train':
-                train_list.append(data)
+                local_train_list.append(data)
             else:
-                test_list.append(data)
+                local_test_list.append(data)
 
+        perc = 0.5
+        local_train_list = random.sample(local_train_list, int(len(local_train_list)*perc))
+        local_test_list = random.sample(local_test_list, int(len(local_test_list)*perc))
+
+        print(f"Completed {index+1} criteria with {len(local_train_list)} training dataset and "
+              f"{len(local_test_list)} testing dataset")
+
+        train_list.extend(local_train_list)
+        test_list.extend(local_test_list)
+
+    print(f"Total {len(train_list)} training dataset and " f"{len(test_list)} testing dataset")
     return train_list, test_list
 
 if __name__ == '__main__':

@@ -4,10 +4,9 @@ import numpy as np
 import os
 import evaluate
 from dotenv import load_dotenv
-from transformers import AutoTokenizer, BitsAndBytesConfig, AutoModelForCausalLM, DataCollatorForLanguageModeling
+from transformers import Trainer, TrainingArguments, AutoTokenizer, BitsAndBytesConfig, DataCollatorWithPadding, AutoModelForSequenceClassification
 from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
 from preprocess import preprocess_training
-from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from transformers.training_args import OptimizerNames
 from datasets import DatasetDict, Dataset
 
@@ -20,12 +19,12 @@ def get_fine_tuning_trainer_args(output_path):
     return TrainingArguments(
         output_dir=output_path + 'training/',
         logging_dir=output_path + 'logs/',
-        per_device_train_batch_size=1,
-        per_device_eval_batch_size=1,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
         evaluation_strategy="steps",
         num_train_epochs=1,
         save_steps=20,
-        eval_steps=20,
+        eval_steps=100,
         logging_steps=10,
         learning_rate=1e-5,
         warmup_ratio=0.1,
@@ -37,14 +36,34 @@ def get_fine_tuning_trainer_args(output_path):
         push_to_hub=False,
         load_best_model_at_end=True,
         seed=42,
-        gradient_accumulation_steps=1,
+        gradient_accumulation_steps=2,
     )
 
 
 def compute_metrics(evaluations):
+
+    precision_metric = evaluate.load("precision")
+    recall_metric = evaluate.load("recall")
+    f1_metric = evaluate.load("f1")
+    accuracy_metric = evaluate.load("accuracy")
+
     predictions, labels = evaluations
     predictions = np.argmax(predictions, axis=1)
-    return {'accuracy': sum([1 for i, j in zip(predictions, labels) if i == j])/len(labels)}
+
+    precision = precision_metric.compute(predictions=predictions, references=labels)["precision"]
+    recall = recall_metric.compute(predictions=predictions, references=labels)["recall"]
+    f1 = f1_metric.compute(predictions=predictions, references=labels)["f1"]
+    accuracy = accuracy_metric.compute(predictions=predictions, references=labels)["accuracy"]
+
+    positive_labels_count = sum([1 for j in labels if j == 1])
+    negative_labels_count = sum([1 for j in labels if j == 0])
+    positive_labels = sum([1 for i, j in zip(predictions, labels) if i == j and j == 1]) / positive_labels_count
+    negative_labels = sum([1 for i, j in zip(predictions, labels) if i == j and j == 0]) / negative_labels_count
+
+    balanced_accuracy = positive_labels + negative_labels / 2
+
+    return {'accuracy': accuracy, 'balanced_accuracy': balanced_accuracy, 'precision': precision,
+            'recall': recall, 'f1': f1}
 
 
 def print_trainable_parameters(model):
@@ -83,7 +102,7 @@ def fine_tuning():
         bnb_4bit_compute_dtype=torch.bfloat16
     )
 
-    model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2",
+    model = AutoModelForSequenceClassification.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2",
                                                  quantization_config=quantization_config,
                                                  num_labels=2,
                                                  cache_dir='model/')
@@ -96,11 +115,6 @@ def fine_tuning():
 
     model.gradient_checkpointing_enable()  # reduce number of stored activations
     model.enable_input_require_grads()
-
-    class CastOutputToFloat(nn.Sequential):
-        def forward(self, x): return super().forward(x).to(torch.float32)
-
-    model.lm_head = CastOutputToFloat(model.lm_head)
 
     lora_config = LoraConfig(
         r=16,  # attention heads
@@ -130,10 +144,8 @@ def fine_tuning():
     def data_preprocesing(row):
         return tokenizer(row['input'], truncation=True, max_length=5000)
 
-    tokenized_data = dataset.map(data_preprocesing, batched=True,
-                                 remove_columns=['input'])
+    tokenized_data = dataset.map(data_preprocesing, batched=True, remove_columns=['input'])
     tokenized_data.set_format("torch")
-
 
     fine_tune_trainer=Trainer(
         model=model,
