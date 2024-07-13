@@ -27,7 +27,7 @@ dataset = {}
 
 def preprocess_inference():
 
-    if os.path('dataset.npy'):
+    if os.path.exists('dataset.npy'):
         return np.load('dataset.npy').tolist()
 
     with pathlib.Path("template_inference.jinja2").open() as f:
