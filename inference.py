@@ -4,20 +4,36 @@ import numpy as np
 import csv
 import os
 from dotenv import load_dotenv
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments, \
-    DataCollatorWithPadding
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments,DataCollatorWithPadding
 from preprocess import preprocess_inference
 from datasets import DatasetDict, Dataset
+from transformers import BitsAndBytesConfig
 import re
 from tqdm import tqdm
 import warnings
+from peft import PeftModel
 warnings.filterwarnings("ignore")
 
 load_dotenv('.env')
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir='model/')
-model = AutoModelForSequenceClassification.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir='model/')
+tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir = "model/")
+# base_model = AutoModelForSequenceClassification.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2", cache_dir = "model/")
+
+quantization_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type='nf4',
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_compute_dtype=torch.bfloat16
+)
+
+base_model = AutoModelForSequenceClassification.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2",
+                                             quantization_config=quantization_config,
+                                             num_labels=2,
+                                             cache_dir='model/')
+
+new_model = "/home/sujeetj-pg/whisper/mist/sequence-cls/results_2/training/checkpoint-635"
+model = PeftModel.from_pretrained(base_model, new_model)
 device = 'cuda'
 
 test_dataset = preprocess_inference()
@@ -102,7 +118,8 @@ def sequence_inference():
     labels = []
     predictions = []
     csvData = []
-    for idx, test_input in enumerate(tokenized_data['eval']):
+    pbar = tqdm(enumerate(tokenized_data['eval']))
+    for idx, test_input in pbar:
         tokenized_input = {k: v for k, v in test_input.items() if k != 'labels'}
 
         test_data = collector_fn(tokenized_input)
