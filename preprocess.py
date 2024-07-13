@@ -22,15 +22,19 @@ wb = xl.load_workbook("health_articles_data.xlsx")
 
 dataset = {}
 
-def preprocess():
 
-    with pathlib.Path("template.jinja2").open() as f:
+def preprocess_inference():
+
+    with pathlib.Path("template_inference.jinja2").open() as f:
         prompt_template = jinja2.Template(f.read())
+
+    dataset = []
     
-    for index in list(range(4)):
+    for index in list(range(9)):
         # print("Active sheet: ", wb.active)
 
-        dataset[index] = []
+        # dataset[index] = []
+        local_test_list = []
 
         wb._active_sheet_index = index
         sheet = wb.active
@@ -46,16 +50,16 @@ def preprocess():
             # print(f"Q:{questions[index]}\nEx:{example}\nAns:{answer}\nSplit:{split}\n\n")
 
         test_list = [index for index, data in dataDict.items() if data['split'] == 'test']
-        train_list = [index for index, data in dataDict.items() if data['split'] == 'train']
+        # train_list = [index for index, data in dataDict.items() if data['split'] == 'train']
 
         for test_index in test_list:
 
-            train_index_1, train_index_2 = random.sample(train_list, 2) # train_list[:2]
+            # train_index_1, train_index_2 = random.sample(train_list, 2) # train_list[:2]
+            #
+            # train_list.remove(train_index_1)
+            # train_list.remove(train_index_2)
 
-            train_list.remove(train_index_1)
-            train_list.remove(train_index_2)
-
-            train_data_1, train_data_2 = dataDict[train_index_1], dataDict[train_index_2]
+            # train_data_1, train_data_2 = dataDict[train_index_1], dataDict[train_index_2]
 
             test_data = dataDict[test_index]
 
@@ -63,21 +67,27 @@ def preprocess():
             # print(f"{train_data_2}")
             # print(f"{test_data}")
 
-            examples = [
-                {"context": train_data_1["example"], "label": 1 if train_data_1["answer"] == "Satisfactory" else 0},
-                {"context": train_data_2["example"], "label": 1 if train_data_2["answer"] == "Satisfactory" else 0},
-            ]
-
-            test = test_data["example"]
+            # examples = [
+            #     {"context": train_data_1["example"], "label": 1 if train_data_1["answer"] == "Satisfactory" else 0},
+            #     {"context": train_data_2["example"], "label": 1 if train_data_2["answer"] == "Satisfactory" else 0},
+            # ]
 
             prompt = prompt_template.render(
-                labels=labels,
-                examples=examples,
-                test=test,
+                context=test_data["example"],
                 question=questions[index]
             )
 
-            dataset[index].append({"prompt": prompt, "target": test_data["answer"]})
+            local_test_list.append({"input": prompt, "labels": 1 if test_data["answer"] == "Satisfactory" else 0})
+
+        perc = 0.5
+        local_test_list = random.sample(local_test_list, int(len(local_test_list) * perc))
+
+        print(f"Completed {index + 1} criteria with {len(local_test_list)} testing dataset")
+
+        dataset.extend(local_test_list)
+
+    random.shuffle(dataset)
+    print(f"Total {len(dataset)} testing dataset")
 
     return dataset
 
@@ -131,6 +141,7 @@ def preprocess_training():
 
     return train_list, test_list
 
+
 if __name__ == '__main__':
-    print(preprocess()[0]["prompt"])
+    print(preprocess_inference()[0]["prompt"])
 
