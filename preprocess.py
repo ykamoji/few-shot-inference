@@ -3,6 +3,8 @@ import csv
 import jinja2
 import pathlib
 import random
+import os
+import numpy as np
 from tqdm import tqdm
 
 labels = [
@@ -24,6 +26,9 @@ dataset = {}
 
 
 def preprocess_inference():
+
+    if os.path('dataset.npy'):
+        return np.load('dataset.npy').tolist()
 
     with pathlib.Path("template_inference.jinja2").open() as f:
         prompt_template = jinja2.Template(f.read())
@@ -88,6 +93,10 @@ def preprocess_inference():
 
     random.shuffle(dataset)
     print(f"Total {len(dataset)} testing dataset")
+
+    np_dataset = np.array(dataset)
+
+    np.save('dataset.npy', np_dataset)
 
     return dataset
 

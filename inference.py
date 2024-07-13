@@ -118,7 +118,8 @@ def sequence_inference():
     labels = []
     predictions = []
     csvData = []
-    for idx, test_input in enumerate(tokenized_data['eval']):
+    pbar = tqdm(enumerate(tokenized_data['eval']))
+    for idx, test_input in pbar:
         tokenized_input = {k: v for k, v in test_input.items() if k != 'labels'}
 
         test_data = collector_fn(tokenized_input)
