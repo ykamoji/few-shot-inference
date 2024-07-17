@@ -105,10 +105,13 @@ def preprocess_training():
 
     with pathlib.Path("template_training.jinja2").open() as f:
         prompt_template = jinja2.Template(f.read())
+    
+    if os.path.exists('train.npy'):
+        return np.load('train.npy', allow_pickle=True).tolist(), np.load('test.npy', allow_pickle=True).tolist()
 
     train_list, test_list = [], []
 
-    for index in list(range(9)):
+    for index in list(range(1)):
         # print("Active sheet: ", wb.active)
         wb._active_sheet_index = index
         sheet = wb.active
@@ -133,7 +136,7 @@ def preprocess_training():
             else:
                 local_test_list.append(data)
 
-        perc = 0.5
+        perc = 1.0
         local_train_list = random.sample(local_train_list, int(len(local_train_list)*perc))
         local_test_list = random.sample(local_test_list, int(len(local_test_list)*perc))
 
@@ -147,6 +150,12 @@ def preprocess_training():
     random.shuffle(test_list)
 
     print(f"Total {len(train_list)} training dataset and " f"{len(test_list)} testing dataset")
+
+    np_train_list = np.array(train_list)
+    np_test_list = np.array(test_list)
+
+    np.save('train.npy', np_train_list)
+    np.save('test.npy', np_test_list)
 
     return train_list, test_list
 

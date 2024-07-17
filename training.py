@@ -19,12 +19,12 @@ def get_fine_tuning_trainer_args(output_path):
     return TrainingArguments(
         output_dir=output_path + 'training/',
         logging_dir=output_path + 'logs/',
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
+        per_device_train_batch_size=2,
+        per_device_eval_batch_size=2,
         evaluation_strategy="steps",
-        num_train_epochs=1,
-        save_steps=20,
-        eval_steps=100,
+        num_train_epochs=4,
+        save_steps=50,
+        eval_steps=50,
         logging_steps=10,
         learning_rate=1e-5,
         warmup_ratio=0.1,
@@ -158,7 +158,7 @@ def fine_tuning():
 
     train_results = fine_tune_trainer.train()
 
-    fine_tune_trainer.save_model(output_dir='results/models')
+    fine_tune_trainer.save_model(output_dir='results/runs/')
     fine_tune_trainer.log_metrics("train", train_results.metrics)
     fine_tune_trainer.save_metrics("train", train_results.metrics)
     fine_tune_trainer.save_state()
