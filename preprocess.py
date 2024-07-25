@@ -7,10 +7,10 @@ import os
 import numpy as np
 from tqdm import tqdm
 
-labels = [
-    {"label": 0, "answer": "Not Satisfactory"},
-    {"label": 1, "answer": "Satisfactory"},
-]
+# labels = [
+#     {"label": 0, "answer": "Not Satisfactory"},
+#     {"label": 1, "answer": "Satisfactory"},
+# ]
 
 questions = []
 with open('Questions.csv', newline='') as csvfile:
@@ -45,7 +45,7 @@ def preprocess_inference():
         sheet = wb.active
 
         dataDict = {}
-        for row in tqdm(range(0, sheet.max_row)):
+        for row in tqdm(range(1, sheet.max_row)):
             data = list(sheet.iter_cols(1, sheet.max_column))
             example = data[21][row].value
             answer = data[18][row].value
@@ -117,7 +117,7 @@ def preprocess_training():
         sheet = wb.active
 
         local_train_list, local_test_list = [], []
-        for row in tqdm(range(0, sheet.max_row)):
+        for row in tqdm(range(1, sheet.max_row)):
             data = list(sheet.iter_cols(1, sheet.max_column))
             context = data[21][row].value
             answer = data[18][row].value
@@ -160,6 +160,171 @@ def preprocess_training():
     return train_list, test_list
 
 
+def preprocess_few_shot_prompts():
+    for index in list(range(5, 10)):
+
+        wb._active_sheet_index = index
+        sheet = wb.active
+
+        dataDict = {}
+        for row in tqdm(range(1, sheet.max_row)):
+            data = list(sheet.iter_cols(1, sheet.max_column))
+            example = data[21][row].value
+            answer = data[18][row].value
+            split = data[-1][row].value
+            id = data[3][row].value
+            title = data[11][row].value
+            dataDict[row] = {"id": int(id), "title": title, "example": example,
+                             "answer": 1 if answer == "Satisfactory" else 0, "split": split}
+
+        test_list = [index for index, data in dataDict.items() if data['split'] == 'test']
+        train_list = [index for index, data in dataDict.items() if data['split'] == 'train']
+
+        train_positive, train_negative, test_positive, test_negative = 2, 2, 5, 5
+
+        examples = []
+        tests = []
+        example_seq = 1
+        while train_positive > 0 or train_negative > 0 or test_negative > 0 or test_positive > 0:
+
+            train_indices = random.sample(train_list, 4)
+            test_indices = random.sample(test_list, 10)
+
+            for idx in train_indices + test_indices:
+                if (idx in train_indices and
+                    ((dataDict[idx]['answer'] == 1 and train_positive > 0) or (
+                            dataDict[idx]['answer'] == 0 and train_negative > 0))) or \
+                        (idx in test_indices and
+                         (dataDict[idx]['answer'] == 1 and test_positive > 0) or (
+                                 dataDict[idx]['answer'] == 0 and test_negative > 0)):
+
+                    prompt_data = {
+                        "title": dataDict[idx]['title'],
+                        "news": dataDict[idx]['example'],
+                        "output": dataDict[idx]['answer']
+                    }
+
+                    if idx in train_indices:
+
+                        train_list.remove(idx)
+                        prompt_data["idx"] = example_seq
+                        example_seq += 1
+                        examples.append(prompt_data)
+
+                        if dataDict[idx]['answer'] == 1:
+                            train_positive -= 1
+                        else:
+                            train_negative -= 1
+
+                    else:
+
+                        test_list.remove(idx)
+                        prompt_data['id'] = dataDict[idx]['id']
+                        tests.append(prompt_data)
+
+                        if dataDict[idx]['answer'] == 1:
+                            test_positive -= 1
+                        else:
+                            test_negative -= 1
+
+        tests = sorted(tests, key=lambda data: data['output'])
+        # examples = sorted(examples, key=lambda data: data['output'])
+
+        for test in tests:
+
+            modified_examples = []
+            p_c, n_c = 1, 1
+            for example in examples:
+                if example['output'] == 0 and n_c == 1:
+                    modified_examples.append(example)
+                    n_c -= 1
+                elif example['output'] == 1 and p_c == 1:
+                    modified_examples.append(example)
+                    p_c -= 1
+
+            modified_examples[0]['idx'] = 1
+            modified_examples[1]['idx'] = 2
+
+            prompt = gen_prompt_2(questions[index], modified_examples, test)
+
+            with open(f'results/criteria_{index + 1}_shot_2.txt', 'a') as file:
+                file.write(str(test['id']) + "\n")
+                file.write(str(test['output']) + "\n")
+                file.write(prompt)
+                file.write("\n\n")
+
+            prompt = gen_prompt_4(questions[index], examples, test)
+
+            with open(f'results/criteria_{index + 1}_shot_4.txt', 'a') as file:
+                file.write(str(test['id']) + "\n")
+                file.write(str(test['output']) + "\n")
+                file.write(prompt)
+                file.write("\n\n")
+
+
+def gen_prompt_2(question, examples, test):
+    def example_prompt(idx, title, news, output):
+        return f'''
+        Example {idx}:
+        Title: {title}
+        News Article: {news}
+        Output: {output}
+        '''
+
+    prompt = f'''
+    You are an expert evaluator tasked with assessing the quality of online health articles. You will evaluate each article based on a specific criterion and provide a concise evaluation. The criterion should be rated as either "Satisfactory" or "Non Satisfactory".
+
+    Criterion for Evaluation:
+    '{question}'
+
+    {example_prompt(**examples[0])}
+    
+    {example_prompt(**examples[1])}
+    
+    Evaluate the following news article:
+    Title: {test['title']}
+    News Article: {test['news']}
+
+    Output Format:
+    Respond with two numbers, first either "1" for "Satisfactory" or "0" for "Not Satisfactory". Do not include any additional text.
+    '''
+
+    return prompt
+
+def gen_prompt_4(question, examples, test):
+    def example_prompt(idx, title, news, output):
+        return f'''
+        Example {idx}:
+        Title: {title}
+        News Article: {news}
+        Output: {output}
+        '''
+
+    prompt = f'''
+    You are an expert evaluator tasked with assessing the quality of online health articles. You will evaluate each article based on a specific criterion and provide a concise evaluation. The criterion should be rated as either "Satisfactory" or "Non Satisfactory".
+
+    Criterion for Evaluation:
+    '{question}'
+
+    {example_prompt(**examples[0])}
+
+    {example_prompt(**examples[1])}
+    
+    {example_prompt(**examples[2])}
+    
+    {example_prompt(**examples[3])}
+
+    Evaluate the following news article:
+    Title: {test['title']}
+    News Article: {test['news']}
+
+    Output Format:
+    Respond with two numbers, first either "1" for "Satisfactory" or "0" for "Not Satisfactory". Do not include any additional text.
+    '''
+
+    return prompt
+
+
 if __name__ == '__main__':
-    print(preprocess_inference()[0]["prompt"])
+    preprocess_few_shot_prompts()
 
